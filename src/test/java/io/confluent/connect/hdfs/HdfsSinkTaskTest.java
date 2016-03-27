@@ -14,12 +14,14 @@
 
 package io.confluent.connect.hdfs;
 
-import org.apache.hadoop.fs.Path;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import io.confluent.connect.avro.AvroData;
+import io.confluent.connect.hdfs.avro.AvroFileReader;
+import io.confluent.connect.hdfs.partitioner.HourlyPartitioner;
+import io.confluent.connect.hdfs.storage.Storage;
+import io.confluent.connect.hdfs.storage.StorageFactory;
+import io.confluent.connect.hdfs.wal.WAL;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -28,14 +30,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import io.confluent.connect.avro.AvroData;
-import io.confluent.connect.hdfs.avro.AvroFileReader;
-import io.confluent.connect.hdfs.storage.Storage;
-import io.confluent.connect.hdfs.storage.StorageFactory;
-import io.confluent.connect.hdfs.wal.WAL;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import org.apache.hadoop.fs.Path;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.junit.Test;
 
 public class HdfsSinkTaskTest extends TestWithMiniDFSCluster {
 
@@ -119,6 +119,12 @@ public class HdfsSinkTaskTest extends TestWithMiniDFSCluster {
   @Test
   public void testSinkTaskPut() throws Exception {
     Map<String, String> props = createProps();
+		//--------------------------------
+		props.put(HdfsSinkConnectorConfig.PARTITIONER_CLASS_CONFIG, HourlyPartitioner.class.getName());
+		props.put(HdfsSinkConnectorConfig.LOCALE_CONFIG, "en");
+		props.put(HdfsSinkConnectorConfig.TIMEZONE_CONFIG, "America/Los_Angeles");
+		//--------------------------------
+
     HdfsSinkTask task = new HdfsSinkTask();
 
     String key = "key";
@@ -158,6 +164,48 @@ public class HdfsSinkTaskTest extends TestWithMiniDFSCluster {
       }
     }
   }
+
+	//	@Test
+	public void testSinkTaskPutString() throws Exception {
+		Map<String, String> props = createProps();
+		HdfsSinkTask task = new HdfsSinkTask();
+
+		String key = "key";
+		Schema schema = Schema.STRING_SCHEMA;
+		String record = "123123123";
+		Collection<SinkRecord> sinkRecords = new ArrayList<>();
+		for (TopicPartition tp : assignment) {
+			for (long offset = 0; offset < 7; offset++) {
+				SinkRecord sinkRecord = new SinkRecord(tp.topic(), tp.partition(), Schema.STRING_SCHEMA, key, schema,
+						record, offset);
+				sinkRecords.add(sinkRecord);
+			}
+		}
+		task.initialize(context);
+		task.start(props);
+		task.put(sinkRecords);
+		task.stop();
+
+		AvroData avroData = task.getAvroData();
+		// Last file (offset 6) doesn't satisfy size requirement and gets discarded on close
+		long[] validOffsets = { -1, 2, 5 };
+
+		for (TopicPartition tp : assignment) {
+			String directory = tp.topic() + "/" + "partition=" + String.valueOf(tp.partition());
+			for (int j = 1; j < validOffsets.length; ++j) {
+				long startOffset = validOffsets[j - 1] + 1;
+				long endOffset = validOffsets[j];
+				Path path = new Path(FileUtils.committedFileName(url, topicsDir, directory, tp, startOffset, endOffset,
+						extension, ZERO_PAD_FMT));
+				Collection<Object> records = schemaFileReader.readData(conf, path);
+				long size = endOffset - startOffset + 1;
+				assertEquals(records.size(), size);
+				for (Object avroRecord : records) {
+					assertEquals(avroRecord, avroData.fromConnectData(schema, record));
+				}
+			}
+		}
+	}
 
   private void createCommittedFiles() throws IOException {
     String file1 = FileUtils.committedFileName(url, topicsDir, DIRECTORY1, TOPIC_PARTITION, 0,

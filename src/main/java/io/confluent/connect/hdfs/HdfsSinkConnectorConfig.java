@@ -14,12 +14,12 @@
 
 package io.confluent.connect.hdfs;
 
-import java.util.Map;
-
 import io.confluent.common.config.AbstractConfig;
 import io.confluent.common.config.ConfigDef;
 import io.confluent.common.config.ConfigDef.Importance;
 import io.confluent.common.config.ConfigDef.Type;
+
+import java.util.Map;
 
 public class HdfsSinkConnectorConfig extends AbstractConfig {
 
@@ -190,6 +190,13 @@ public class HdfsSinkConnectorConfig extends AbstractConfig {
       "The period in milliseconds to renew the Kerberos ticket.";
   public static final long KERBEROS_TICKET_RENEW_PERIOD_MS_DEFAULT = 60000 * 60;
 
+	/**
+	 *  added by donglei
+	 */
+	public static final String APT_PARTITIONER_INTERVAL_MINUTE = "apt.partitioner.internal.minute";
+	private static final String APT_PARTITIONER_INTERVAL_MINUTE_DOC = "The internal of apt partition in minutes";
+	public static final long APT_PARTITIONER_INTERVAL_MINUTE_DEFAULT = 10;
+
   static ConfigDef config = new ConfigDef()
       .define(HDFS_URL_CONFIG, Type.STRING, Importance.HIGH, HDFS_URL_DOC)
       .define(HADOOP_CONF_DIR_CONFIG, Type.STRING, HADOOP_CONF_DIR_DEFAULT, Importance.HIGH,
@@ -239,7 +246,9 @@ public class HdfsSinkConnectorConfig extends AbstractConfig {
               Importance.HIGH, HDFS_NAMENODE_PRINCIPAL_DOC)
       .define(KERBEROS_TICKET_RENEW_PERIOD_MS_CONFIG, Type.LONG,
               KERBEROS_TICKET_RENEW_PERIOD_MS_DEFAULT, Importance.LOW,
-              KERBEROS_TICKET_RENEW_PERIOD_MS_DOC);
+              KERBEROS_TICKET_RENEW_PERIOD_MS_DOC)
+			//added by donglei
+              .define(APT_PARTITIONER_INTERVAL_MINUTE, Type.INT, APT_PARTITIONER_INTERVAL_MINUTE_DEFAULT,Importance.LOW, APT_PARTITIONER_INTERVAL_MINUTE_DOC);
 
   public HdfsSinkConnectorConfig(Map<String, String> props) {
     super(config, props);

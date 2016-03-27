@@ -14,6 +14,13 @@
 
 package io.confluent.connect.hdfs;
 
+import io.confluent.common.config.ConfigException;
+import io.confluent.connect.avro.AvroData;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -21,15 +28,6 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Collection;
-import java.util.Map;
-import java.util.Set;
-
-import io.confluent.common.config.ConfigException;
-import io.confluent.connect.avro.AvroData;
-import io.confluent.connect.hdfs.schema.Compatibility;
-import io.confluent.connect.hdfs.schema.SchemaUtils;
 
 public class HdfsSinkTask extends SinkTask {
 
@@ -50,22 +48,12 @@ public class HdfsSinkTask extends SinkTask {
   public void start(Map<String, String> props) {
     try {
       HdfsSinkConnectorConfig connectorConfig = new HdfsSinkConnectorConfig(props);
-      boolean hiveIntegration = connectorConfig.getBoolean(HdfsSinkConnectorConfig.HIVE_INTEGRATION_CONFIG);
-      if (hiveIntegration) {
-        Compatibility compatibility = SchemaUtils.getCompatibility(
-            connectorConfig.getString(HdfsSinkConnectorConfig.SCHEMA_COMPATIBILITY_CONFIG));
-        if (compatibility == Compatibility.NONE) {
-          throw new ConfigException("Hive Integration requires schema compatibility to be BACKWARD, FORWARD or FULL");
-        }
-      }
+
       int schemaCacheSize = connectorConfig.getInt(HdfsSinkConnectorConfig.SCHEMA_CACHE_SIZE_CONFIG);
       avroData = new AvroData(schemaCacheSize);
       hdfsWriter = new DataWriter(connectorConfig, context, avroData);
       Set<TopicPartition> assignment = context.assignment();
       recover(assignment);
-      if (hiveIntegration) {
-        syncWithHive();
-      }
     } catch (ConfigException e) {
       throw new ConnectException("Couldn't start HdfsSinkConnector due to configuration error.", e);
     } catch (ConnectException e) {

@@ -14,6 +14,31 @@
 
 package io.confluent.connect.hdfs;
 
+import io.confluent.common.config.ConfigException;
+import io.confluent.connect.avro.AvroData;
+import io.confluent.connect.hdfs.filter.CommittedFileFilter;
+import io.confluent.connect.hdfs.filter.TopicCommittedFileFilter;
+import io.confluent.connect.hdfs.hive.HiveMetaStore;
+import io.confluent.connect.hdfs.hive.HiveUtil;
+import io.confluent.connect.hdfs.partitioner.Partitioner;
+import io.confluent.connect.hdfs.storage.Storage;
+import io.confluent.connect.hdfs.storage.StorageFactory;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
@@ -26,33 +51,6 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTaskContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.net.InetAddress;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import io.confluent.common.config.ConfigException;
-import io.confluent.connect.avro.AvroData;
-import io.confluent.connect.hdfs.filter.CommittedFileFilter;
-import io.confluent.connect.hdfs.filter.TopicCommittedFileFilter;
-import io.confluent.connect.hdfs.hive.HiveMetaStore;
-import io.confluent.connect.hdfs.hive.HiveUtil;
-import io.confluent.connect.hdfs.partitioner.Partitioner;
-import io.confluent.connect.hdfs.storage.Storage;
-import io.confluent.connect.hdfs.storage.StorageFactory;
 
 public class DataWriter {
   private static final Logger log = LoggerFactory.getLogger(DataWriter.class);
@@ -171,7 +169,7 @@ public class DataWriter {
       createDir(topicsDir + HdfsSinkConnecorConstants.TEMPFILE_DIRECTORY);
       createDir(logsDir);
 
-      format = getFormat();
+			format = getFormat();
       writerProvider = format.getRecordWriterProvider();
       schemaFileReader = format.getSchemaFileReader(avroData);
 
@@ -209,25 +207,6 @@ public class DataWriter {
       int partition = record.kafkaPartition();
       TopicPartition tp = new TopicPartition(topic, partition);
       topicPartitionWriters.get(tp).buffer(record);
-    }
-
-    if (hiveIntegration) {
-      Iterator<Future> iterator = hiveUpdateFutures.iterator();
-      while (iterator.hasNext()) {
-        try {
-          Future future = iterator.next();
-          if (future.isDone()) {
-            future.get();
-            iterator.remove();
-          } else {
-            break;
-          }
-        } catch (ExecutionException e) {
-          throw new RuntimeException(e);
-        } catch (InterruptedException e) {
-          // ignore
-        }
-      }
     }
 
     for (TopicPartition tp: assignment) {
