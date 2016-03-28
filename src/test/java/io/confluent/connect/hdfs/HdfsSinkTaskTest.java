@@ -18,12 +18,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import io.confluent.connect.avro.AvroData;
 import io.confluent.connect.hdfs.avro.AvroFileReader;
-import io.confluent.connect.hdfs.partitioner.HourlyPartitioner;
 import io.confluent.connect.hdfs.storage.Storage;
 import io.confluent.connect.hdfs.storage.StorageFactory;
 import io.confluent.connect.hdfs.wal.WAL;
+import io.confluent.kafka.serializers.NonRecordContainer;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -120,9 +121,9 @@ public class HdfsSinkTaskTest extends TestWithMiniDFSCluster {
   public void testSinkTaskPut() throws Exception {
     Map<String, String> props = createProps();
 		//--------------------------------
-		props.put(HdfsSinkConnectorConfig.PARTITIONER_CLASS_CONFIG, HourlyPartitioner.class.getName());
-		props.put(HdfsSinkConnectorConfig.LOCALE_CONFIG, "en");
-		props.put(HdfsSinkConnectorConfig.TIMEZONE_CONFIG, "America/Los_Angeles");
+		//		props.put(HdfsSinkConnectorConfig.PARTITIONER_CLASS_CONFIG, HourlyPartitioner.class.getName());
+		//		props.put(HdfsSinkConnectorConfig.LOCALE_CONFIG, "en");
+		//		props.put(HdfsSinkConnectorConfig.TIMEZONE_CONFIG, "America/Los_Angeles");
 		//--------------------------------
 
     HdfsSinkTask task = new HdfsSinkTask();
@@ -165,14 +166,14 @@ public class HdfsSinkTaskTest extends TestWithMiniDFSCluster {
     }
   }
 
-	//	@Test
+	@Test
 	public void testSinkTaskPutString() throws Exception {
 		Map<String, String> props = createProps();
 		HdfsSinkTask task = new HdfsSinkTask();
 
 		String key = "key";
 		Schema schema = Schema.STRING_SCHEMA;
-		String record = "123123123";
+		CharSequence record = "123123123";
 		Collection<SinkRecord> sinkRecords = new ArrayList<>();
 		for (TopicPartition tp : assignment) {
 			for (long offset = 0; offset < 7; offset++) {
@@ -201,7 +202,50 @@ public class HdfsSinkTaskTest extends TestWithMiniDFSCluster {
 				long size = endOffset - startOffset + 1;
 				assertEquals(records.size(), size);
 				for (Object avroRecord : records) {
-					assertEquals(avroRecord, avroData.fromConnectData(schema, record));
+					assertEquals(avroRecord.toString(),
+							((NonRecordContainer) avroData.fromConnectData(schema, record)).getValue());
+				}
+			}
+		}
+	}
+
+	@Test
+	public void testSinkTaskPutBytes() throws Exception {
+		Map<String, String> props = createProps();
+		HdfsSinkTask task = new HdfsSinkTask();
+
+		String key = "key";
+		Schema schema = Schema.BYTES_SCHEMA;
+		ByteBuffer record = ByteBuffer.wrap("123123123".getBytes());
+		Collection<SinkRecord> sinkRecords = new ArrayList<>();
+		for (TopicPartition tp : assignment) {
+			for (long offset = 0; offset < 7; offset++) {
+				SinkRecord sinkRecord = new SinkRecord(tp.topic(), tp.partition(), Schema.STRING_SCHEMA, key, schema,
+						record, offset);
+				sinkRecords.add(sinkRecord);
+			}
+		}
+		task.initialize(context);
+		task.start(props);
+		task.put(sinkRecords);
+		task.stop();
+
+		AvroData avroData = task.getAvroData();
+		// Last file (offset 6) doesn't satisfy size requirement and gets discarded on close
+		long[] validOffsets = { -1, 2, 5 };
+
+		for (TopicPartition tp : assignment) {
+			String directory = tp.topic() + "/" + "partition=" + String.valueOf(tp.partition());
+			for (int j = 1; j < validOffsets.length; ++j) {
+				long startOffset = validOffsets[j - 1] + 1;
+				long endOffset = validOffsets[j];
+				Path path = new Path(FileUtils.committedFileName(url, topicsDir, directory, tp, startOffset, endOffset,
+						extension, ZERO_PAD_FMT));
+				Collection<Object> records = schemaFileReader.readData(conf, path);
+				long size = endOffset - startOffset + 1;
+				assertEquals(records.size(), size);
+				for (Object avroRecord : records) {
+					assertEquals(avroRecord, ((NonRecordContainer) avroData.fromConnectData(schema, record)).getValue());
 				}
 			}
 		}

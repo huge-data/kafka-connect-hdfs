@@ -195,7 +195,7 @@ public class HdfsSinkConnectorConfig extends AbstractConfig {
 	 */
 	public static final String APT_PARTITIONER_INTERVAL_MINUTE = "apt.partitioner.internal.minute";
 	private static final String APT_PARTITIONER_INTERVAL_MINUTE_DOC = "The internal of apt partition in minutes";
-	public static final long APT_PARTITIONER_INTERVAL_MINUTE_DEFAULT = 10;
+	public static final int APT_PARTITIONER_INTERVAL_MINUTE_DEFAULT = 10;
 
   static ConfigDef config = new ConfigDef()
       .define(HDFS_URL_CONFIG, Type.STRING, Importance.HIGH, HDFS_URL_DOC)
